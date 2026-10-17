@@ -21,6 +21,7 @@
   let mode = "notes";
   const pending = { notes: [], paper: [] }; // image data URLs per mode
   let paperPdf = null;
+  let paperPdfName = "";
   const hidden = new Set();
 
   function load() {
@@ -228,45 +229,130 @@
     el.lastChild.textContent = msg;
   }
 
-  async function ingest(runMode) {
-    const btn = document.querySelector(`[data-run="${runMode}"]`);
-    let payload, endpoint = `/api/${runMode}`;
+  // ---------- map requests run one at a time, in the order they were added ----------
+  // Each click snapshots its input and clears the form straight away, so the next source can be
+  // queued while Gemma works. One shared status line and progress bar follow the queue.
+  const LABELS = { notes: "notes", repo: "repo", paper: "paper" };
+  const WORKING = { notes: "Gemma 4 is reading your notes", repo: "Fetching the repo and mapping it with Gemma 4", paper: "Reading the paper with Gemma 4" };
+  const queue = [];
+  let running = null; // the job being processed
+  let failures = [];
+
+  function ingest(runMode) {
+    let payload;
     if (runMode === "notes") {
-      payload = { text: $("#notes-text").value, images: pending.notes };
+      payload = { text: $("#notes-text").value, images: pending.notes.slice() };
       if (!payload.text.trim() && !payload.images.length) return setStatus("Add some text or an image first.", "error");
     } else if (runMode === "repo") {
       payload = { url: $("#repo-url").value.trim() };
       if (!payload.url) return setStatus("Enter a GitHub repository URL.", "error");
+      const dupe = [running, ...queue].some((j) => j && j.mode === "repo" && j.payload.url === payload.url);
+      if (dupe) return setStatus("That repo is already being mapped.", "error");
     } else {
-      payload = { pdf: paperPdf, text: $("#paper-text").value, images: pending.paper };
+      payload = { pdf: paperPdf, text: $("#paper-text").value, images: pending.paper.slice() };
       if (!payload.pdf && !payload.text.trim() && !payload.images.length) return setStatus("Choose a PDF, paste text, or add figures.", "error");
     }
-
-    btn.disabled = true;
-    Motion.busy(true);
-    const started = performance.now();
-    setStatus({ notes: "Gemma 4 is reading your notes…", repo: "Fetching the repo and mapping it with Gemma 4…", paper: "Reading the paper with Gemma 4…" }[runMode], "busy");
-    try {
-      const graph = await api(endpoint, payload);
-      if (runMode === "paper" && graph.nodes[0]) graph.nodes[0].extra = { ...graph.nodes[0].extra, root: true };
-      const added = addGraph(graph, "ai");
-      setStatus(`Mapped ${added.nodes.length} ideas. Checking how they connect to the rest of your map…`, "busy");
-      const links = await linkNew(added.nodes);
-      const secs = ((performance.now() - started) / 1000).toFixed(1);
-      track("Map source", { source: runMode, ideas: added.nodes.length, links: added.edges.length + links, seconds: Number(secs) });
-      setStatus(`Mapped ${added.nodes.length} ideas and ${added.edges.length + links} links in ${secs}s. ${links ? `${links} of them connect to what was already on the map.` : "None connect to earlier ideas yet."}`);
-      network.fit({ nodes: added.nodes.map((n) => n.id), animation: { duration: 600 } });
-      clearInputs(runMode);
-    } catch (err) {
-      setStatus(err.message, "error");
-    } finally {
-      btn.disabled = false;
-      Motion.busy(false);
+    queue.push({ mode: runMode, payload, label: jobLabel(runMode, payload), id: Date.now() + Math.random() });
+    clearInputs(runMode);
+    renderQueue();
+    if (running) {
+      const place = queue.length === 1 ? "next" : `number ${queue.length} in line`;
+      setStatus(`${WORKING[running.mode]}… Your ${LABELS[runMode]} is queued, ${place}.`, "busy");
     }
+    processQueue();
+  }
+
+  async function processQueue() {
+    if (running) return;
+    Motion.busy(true);
+    failures = [];
+    let last = "";
+    while (queue.length) {
+      running = queue.shift();
+      renderQueue();
+      try {
+        last = await runJob(running);
+      } catch (err) {
+        failures.push(`Mapping the ${LABELS[running.mode]} failed: ${err.message}`);
+      }
+    }
+    running = null;
+    renderQueue();
+    Motion.busy(false);
+    if (failures.length) setStatus(failures.join(" "), "error");
+    else setStatus(last);
+  }
+
+  // A short, recognisable name for a queued job: repo name, PDF file name, or the first words.
+  function jobLabel(mode, payload) {
+    if (mode === "repo") return payload.url.replace(/^https?:\/\/(www\.)?github\.com\//, "").replace(/\.git$|\/$/g, "");
+    if (mode === "paper" && payload.pdf) return paperPdfName || "PDF";
+    const text = (payload.text || "").trim().replace(/\s+/g, " ");
+    if (text) return text.length > 42 ? text.slice(0, 40).trimEnd() + "…" : text;
+    const n = payload.images.length;
+    return mode === "paper" ? `${n} figure${n === 1 ? "" : "s"}` : `${n} photo${n === 1 ? "" : "s"}`;
+  }
+
+  function renderQueue() {
+    const list = $("#queue");
+    const jobs = [...(running ? [running] : []), ...queue];
+    list.textContent = "";
+    jobs.forEach((job, i) => {
+      const li = document.createElement("li");
+      li.className = "job" + (job === running ? " running" : "");
+      const glyph = document.createElement("span");
+      glyph.className = `glyph glyph-${job.mode}`;
+      glyph.setAttribute("aria-hidden", "true");
+      const name = document.createElement("span");
+      name.className = "job-name";
+      name.textContent = job.label;
+      name.title = job.label;
+      const state = document.createElement("span");
+      state.className = "job-state";
+      if (job === running) {
+        state.innerHTML = '<span class="spinner"></span>';
+        state.append("Mapping");
+      } else {
+        state.textContent = i === (running ? 1 : 0) ? "Next" : `${running ? i : i + 1} in line`;
+      }
+      li.append(glyph, name, state);
+      if (job !== running) {
+        const remove = document.createElement("button");
+        remove.className = "job-remove";
+        remove.textContent = "×";
+        remove.setAttribute("aria-label", `Remove ${job.label} from the queue`);
+        remove.onclick = () => {
+          const at = queue.indexOf(job);
+          if (at !== -1) queue.splice(at, 1);
+          renderQueue();
+        };
+        li.appendChild(remove);
+      }
+      list.appendChild(li);
+    });
+    list.hidden = jobs.length < 2; // a single running job is already described by the status line
+  }
+
+  const waiting = () => (queue.length ? ` (${queue.length} more waiting)` : "");
+
+  async function runJob(job) {
+    const started = performance.now();
+    setStatus(`${WORKING[job.mode]}…${waiting()}`, "busy");
+    const graph = await api(`/api/${job.mode}`, job.payload);
+    if (job.mode === "paper" && graph.nodes[0]) graph.nodes[0].extra = { ...graph.nodes[0].extra, root: true };
+    const added = addGraph(graph, "ai");
+    setStatus(`Mapped ${added.nodes.length} ideas. Checking how they connect to the rest of your map…${waiting()}`, "busy");
+    const links = await linkNew(added.nodes);
+    const secs = ((performance.now() - started) / 1000).toFixed(1);
+    track("Map source", { source: job.mode, ideas: added.nodes.length, links: added.edges.length + links, seconds: Number(secs) });
+    network.fit({ nodes: added.nodes.map((n) => n.id), animation: { duration: 600 } });
+    return `Mapped ${added.nodes.length} ideas and ${added.edges.length + links} links from the ${LABELS[job.mode]} in ${secs}s. ${links ? `${links} of them connect to what was already on the map.` : "None connect to earlier ideas yet."}`;
   }
 
   function clearInputs(runMode) {
-    if (runMode === "notes") {
+    if (runMode === "repo") {
+      $("#repo-url").value = "";
+    } else if (runMode === "notes") {
       $("#notes-text").value = "";
       pending.notes = [];
       renderThumbs("notes");
@@ -274,6 +360,7 @@
       $("#paper-text").value = "";
       pending.paper = [];
       paperPdf = null;
+      paperPdfName = "";
       $("#paper-file").textContent = "";
       renderThumbs("paper");
     }
@@ -709,7 +796,7 @@
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => { paperPdf = reader.result; $("#paper-file").textContent = `📄 ${f.name} (${(f.size / 1024).toFixed(0)} KB)`; };
+    reader.onload = () => { paperPdf = reader.result; paperPdfName = f.name; $("#paper-file").textContent = `📄 ${f.name} (${(f.size / 1024).toFixed(0)} KB)`; };
     reader.readAsDataURL(f);
   };
 

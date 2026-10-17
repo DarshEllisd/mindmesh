@@ -220,6 +220,17 @@ textarea:focus-visible, input:focus-visible { outline-offset: 0; border-color: v
 .ask-row { display: flex; gap: 8px; }
 .ask-row .primary { padding: 10px 16px; }
 
+#queue { margin: -8px 0 0; padding: 0; list-style: none; border: 1px solid var(--rule); border-radius: 3px; }
+.job { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; padding: 7px 10px; font-size: 13.5px; }
+.job + .job { border-top: 1px solid var(--rule); }
+.job.running { background: var(--field); }
+.job-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.job-state { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-family: "Archivo Narrow", Archivo, sans-serif; white-space: nowrap; }
+.job.running .job-state { color: var(--route); font-weight: 600; }
+.job-state .spinner { margin-top: 0; width: 11px; height: 11px; }
+.job-remove { width: 22px; height: 22px; padding: 0; border: 0; background: none; color: var(--ink-soft); font-size: 18px; line-height: 1; }
+.job-remove:hover { color: var(--danger); }
+
 #results { margin: 0; padding: 0; list-style: none; }
 .result { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; width: 100%; padding: 8px 0; border: 0; border-top: 1px solid var(--rule); background: none; text-align: left; }
 #results li:last-child .result { border-bottom: 1px solid var(--rule); }
