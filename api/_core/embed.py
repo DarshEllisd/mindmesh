@@ -5,7 +5,7 @@ from typing import List
 import httpx
 import numpy as np
 
-from .llm import API, TIMEOUT, LLMError, api_key
+from .llm import API, TIMEOUT, LLMError, auth_headers
 
 GEMINI_EMBED_MODEL = "gemini-embedding-001"
 HF_EMBED_URL = (
@@ -28,7 +28,7 @@ def _gemini(texts: List[str]) -> List[List[float]]:
         ]
         resp = httpx.post(
             f"{API}/models/{GEMINI_EMBED_MODEL}:batchEmbedContents",
-            params={"key": api_key()},
+            headers=auth_headers(),
             json={"requests": requests},
             timeout=TIMEOUT,
         )
