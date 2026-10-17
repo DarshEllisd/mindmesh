@@ -11,6 +11,17 @@
   <link rel="stylesheet" href="style.css">
   <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+    // Vercel Web Analytics. Vercel serves the script at /_vercel/insights once Analytics is enabled
+    // for the project; it is cookieless. Skipped on localhost, where that path does not exist.
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) {
+      const s = document.createElement("script");
+      s.defer = true;
+      s.src = "/_vercel/insights/script.js";
+      document.head.appendChild(s);
+    }
+  </script>
 </head>
 <body>
   <aside id="dock">

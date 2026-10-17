@@ -74,6 +74,8 @@ Open http://localhost:8000. The same server serves the UI locally. To see which 
 2. Set `GEMINI_API_KEY`, and optionally `GEMMA_MODEL`, `EMBED_PROVIDER`, `HF_TOKEN` and `GITHUB_TOKEN`, under **Project → Settings → Environment Variables**.
 3. Deploy.
 
+4. Optional: open **Project → Analytics → Enable** to turn on Vercel Web Analytics. The page already includes the cookieless analytics snippet, which loads only on deployed hosts, not on localhost. Page views are counted on every plan. A few custom events are also sent (`Map source`, `Search map`, `Explain with Gemma`, `Reuse answer`, `Remove ideas`), carrying only the source type and counts, never your notes, questions or URLs. Custom events are recorded on Vercel Pro.
+
 Limits: request bodies are capped at 4.5MB, so images are downscaled in the browser and PDFs should be under about 3MB. Each request has 60s.
 
 ## Key dependencies

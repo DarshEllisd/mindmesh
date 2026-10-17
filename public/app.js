@@ -199,6 +199,14 @@
     return addGraph({ nodes: [], edges }, "semantic").edges.length;
   }
 
+  // ---------- analytics ----------
+  // Vercel Web Analytics custom event. Only the action, source type and counts are sent, never the
+  // user's notes, questions or URLs. Custom events are recorded on Vercel Pro; on Hobby only page
+  // views are counted and these calls are ignored.
+  function track(name, data) {
+    try { if (window.va) window.va("event", { name, data }); } catch (_) { /* analytics is optional */ }
+  }
+
   // ---------- API ----------
   async function api(path, body) {
     const res = await fetch(path, {
@@ -245,6 +253,7 @@
       setStatus(`Mapped ${added.nodes.length} ideas. Checking how they connect to the rest of your map…`, "busy");
       const links = await linkNew(added.nodes);
       const secs = ((performance.now() - started) / 1000).toFixed(1);
+      track("Map source", { source: runMode, ideas: added.nodes.length, links: added.edges.length + links, seconds: Number(secs) });
       setStatus(`Mapped ${added.nodes.length} ideas and ${added.edges.length + links} links in ${secs}s. ${links ? `${links} of them connect to what was already on the map.` : "None connect to earlier ideas yet."}`);
       network.fit({ nodes: added.nodes.map((n) => n.id), animation: { duration: 600 } });
       clearInputs(runMode);
@@ -314,11 +323,13 @@
         ranked.filter((x) => x.n.mode === m && !context.includes(x.n)).slice(0, ASK_PER_SOURCE).forEach((x) => context.push(x.n));
       });
       lastSearch = { q, qVec, context };
+      track("Search map", { results: Math.min(ranked.length, RESULT_ROWS) });
       showResults(ranked.slice(0, RESULT_ROWS));
       setStatus("");
 
       const cached = cachedAnswer(qVec);
       if (cached) {
+        track("Reuse answer", {});
         showAnswer(cached.answer, cached.cited, cached.q === q ? "Answered earlier" : `Answered earlier for “${cached.q}”`);
         setExplain("Ask Gemma again");
         focusOn(cached.cited.length ? cached.cited : context.map((n) => n.id));
@@ -345,6 +356,7 @@
       const res = await api("/api/ask", { question: q, context: context.map(askContext) });
       showAnswer(res.answer, res.cited);
       saveAnswer({ q, qVec, answer: res.answer, cited: res.cited });
+      track("Explain with Gemma", { cited: res.cited.length });
       setStatus("");
       btn.hidden = true;
       if (res.cited.length) focusOn(res.cited);
@@ -546,6 +558,7 @@
     render();
     closeDetail();
     undoState = { nodes, edges };
+    track("Remove ideas", { count: nodes.length });
     showBar("undo", nodes.length === 1 ? `Removed “${nodes[0].title}”` : `Removed ${nodes.length} ideas`);
     clearTimeout(undoTimer);
     undoTimer = setTimeout(() => {
