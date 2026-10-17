@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mindmesh</title>
+  <meta name="description" content="Mindmesh puts your notes, a code repository and research papers on one map, and uses Gemma 4 to find where they connect.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Archivo+Narrow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+</head>
+<body>
+  <aside id="dock">
+    <header class="brand">
+      <h1 class="wordmark">Mindmesh</h1>
+      <p class="tagline">Notes, repos and papers on one map. Gemma&nbsp;4 finds where they meet.</p>
+    </header>
+
+    <nav class="sources" role="tablist" aria-label="Source type">
+      <button role="tab" class="source active" data-mode="notes" aria-selected="true">
+        <span class="glyph glyph-notes" aria-hidden="true"></span>Notes
+      </button>
+      <button role="tab" class="source" data-mode="repo" aria-selected="false">
+        <span class="glyph glyph-repo" aria-hidden="true"></span>Repo
+      </button>
+      <button role="tab" class="source" data-mode="paper" aria-selected="false">
+        <span class="glyph glyph-paper" aria-hidden="true"></span>Paper
+      </button>
+    </nav>
+
+    <section class="panel" data-panel="notes">
+      <label for="notes-text">Type or paste notes, or add photos of handwriting and whiteboards.</label>
+      <textarea id="notes-text" rows="7" placeholder="Lecture notes, a brain dump, meeting minutes. You can paste a screenshot here too."></textarea>
+      <div id="notes-thumbs" class="thumbs"></div>
+      <div class="actions">
+        <button class="primary" data-run="notes">Add notes</button>
+        <label class="quiet">Add photos<input id="notes-images" type="file" accept="image/*" multiple hidden></label>
+        <button class="quiet" data-sample="notes">Use sample</button>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="repo" hidden>
+      <label for="repo-url">Public GitHub repository</label>
+      <input id="repo-url" type="url" placeholder="https://github.com/owner/repo" autocomplete="off">
+      <p class="hint">You get the main modules, a reading order for newcomers, and its good first issues pinned to the code they likely touch.</p>
+      <div class="actions">
+        <button class="primary" data-run="repo">Map repo</button>
+        <button class="quiet" data-sample="repo">Use sample</button>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="paper" hidden>
+      <label for="paper-text">A research paper as a PDF (up to 3&nbsp;MB), pasted text, or screenshots of its figures.</label>
+      <div id="paper-file" class="hint"></div>
+      <div id="paper-thumbs" class="thumbs"></div>
+      <textarea id="paper-text" rows="4" placeholder="Or paste the abstract or a section"></textarea>
+      <div class="actions">
+        <button class="primary" data-run="paper">Map paper</button>
+        <label class="quiet">Choose PDF<input id="paper-pdf" type="file" accept="application/pdf" hidden></label>
+        <label class="quiet">Add figures<input id="paper-images" type="file" accept="image/*" multiple hidden></label>
+      </div>
+    </section>
+
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="progress" hidden aria-hidden="true"><span></span></div>
+
+    <section class="ask">
+      <h2><label for="ask-input">Ask your map</label></h2>
+      <div class="ask-row">
+        <input id="ask-input" type="text" placeholder="Where is attention implemented in the repo?" autocomplete="off">
+        <button class="primary" id="ask-btn">Ask</button>
+      </div>
+      <ol id="results" hidden aria-label="Closest ideas"></ol>
+      <button class="primary explain" id="explain-btn" hidden>Explain with Gemma</button>
+      <div id="answer" hidden></div>
+    </section>
+
+    <footer class="dock-foot">
+      <span id="counts"></span>
+      <span class="spacer"></span>
+      <button class="text-btn" id="export-btn">Export JSON</button>
+      <button class="text-btn danger" id="clear-btn">Clear map</button>
+    </footer>
+  </aside>
+
+  <main id="chart">
+    <div id="graph" aria-label="Knowledge map"></div>
+
+    <div id="empty">
+      <h2>Nothing on the map yet</h2>
+      <p>Add notes, a GitHub repo or a paper. Each idea becomes a point, and ideas that belong together get connected, even when they come from different sources.</p>
+      <button class="primary" id="empty-sample">Map the sample notes</button>
+    </div>
+
+    <div class="legend" aria-label="Legend">
+      <label><input type="checkbox" data-filter="notes" checked><span class="glyph glyph-notes" aria-hidden="true"></span>Notes</label>
+      <label><input type="checkbox" data-filter="repo" checked><span class="glyph glyph-repo" aria-hidden="true"></span>Repo</label>
+      <label><input type="checkbox" data-filter="paper" checked><span class="glyph glyph-paper" aria-hidden="true"></span>Paper</label>
+      <span class="key"><span class="stroke stroke-route" aria-hidden="true"></span>Link across sources</span>
+      <span class="key"><span class="stroke stroke-similar" aria-hidden="true"></span>Related idea</span>
+      <span class="key hint">Ctrl-click or Shift-drag to select several</span>
+    </div>
+
+    <div id="lasso" hidden aria-hidden="true"></div>
+
+    <div id="selection-bar" role="status" aria-live="polite" hidden>
+      <span id="selection-count"></span>
+      <button class="danger-btn" id="selection-remove">Remove from map</button>
+      <button class="text-btn" id="selection-clear">Clear selection</button>
+      <button class="primary" id="selection-undo" hidden>Undo</button>
+    </div>
+
+    <article id="detail" hidden>
+      <button class="close" id="detail-close" aria-label="Close details">×</button>
+      <div id="detail-body"></div>
+    </article>
+  </main>
+
+  <script src="motion.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
