@@ -70,7 +70,7 @@ Open http://localhost:8000. The same server serves the UI locally. To see which 
 
 ### Deploy to Vercel
 
-1. Import the repository in Vercel. `vercel.json` sends `/api/*` to the Python function and `public/` is served as static files.
+1. Import the repository in Vercel. Vercel detects the FastAPI app in `api/index.py` and routes requests to it, while `public/` is served as static files. `vercel.json` only raises the function time limit to 60s. Don't add a rewrite to `/api/index`: FastAPI would then receive the rewritten path and return 404 for every route.
 2. Set `GEMINI_API_KEY`, and optionally `GEMMA_MODEL`, `EMBED_PROVIDER`, `HF_TOKEN` and `GITHUB_TOKEN`, under **Project → Settings → Environment Variables**.
 3. Deploy.
 
